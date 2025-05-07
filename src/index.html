@@ -43,10 +43,10 @@
 
   const options = {
     "type": "svg",
-    "data": "test", // any string
-    "width": 500, // any number
-    "height": 500, // any number
-    "margin": 120, // any number
+    "data": "aa", // any string
+    "width": 400, // any number
+    "height": 400, // any number
+    margin: 0,
     dotsOptions: {
       type: "dots",
     },
@@ -54,8 +54,11 @@
       type: "style_4",
     },
     cornersDotOptions: {
-      type: "square",
+      type: "rounded",
     },
+    backgroundOptions: {
+      color: 'red'
+    }
   };
 
   const qrCode = new QRCodeStyling(options);
@@ -84,7 +87,7 @@ const extensionOptions = {
   }
 }
   // Set the license key (replace 'key' with your actual key)
-  qrCode.applyExtension(QRBorderPlugin(extensionOptions));
+  // qrCode.applyExtension(QRBorderPlugin(extensionOptions));
   QRBorderPlugin.setKey("f03fb5ee68b66ef5efeaf4bb5eab0a9cVj0yLE9OPTE1LFM9cXItYm9yZGVyLXBsdWdpbixMPXBlcnBldHVhbCxPPXFyLWNvZGUtc3R5bGluZyxFPTE3MzAxMzY5ODY2NzUsRD1sZWZlLmRldg==");
 
   qrCode.append(document.getElementById("canvas"));

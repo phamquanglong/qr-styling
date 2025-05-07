@@ -50,18 +50,13 @@ export default class QRSVG {
   constructor(options: RequiredOptions, window: Window) {
     this._window = window;
     this._element = this._window.document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    this._element.setAttribute("width", String(options.width));
-    this._element.setAttribute("height", String(options.height));
+    // DEFER setting width, height, viewBox until drawQR
     this._element.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
-    if (!options.dotsOptions.roundSize) {
-      this._element.setAttribute("shape-rendering", "crispEdges");
-    }
-    this._element.setAttribute("viewBox", `0 0 ${options.width} ${options.height}`);
     this._defs = this._window.document.createElementNS("http://www.w3.org/2000/svg", "defs");
     this._element.appendChild(this._defs);
     this._imageUri = options.image;
     this._instanceId = QRSVG.instanceCount++;
-    this._options = options;
+    this._options = options; // Store original options
   }
 
   get width(): number {
@@ -78,22 +73,56 @@ export default class QRSVG {
 
   async drawQR(qr: QRCode): Promise<void> {
     const count = qr.getModuleCount();
-    const minSize = Math.min(this._options.width, this._options.height) - this._options.margin * 2;
-    const realQRSize = this._options.shape === shapeTypes.circle ? minSize / Math.sqrt(2) : minSize;
-    const dotSize = this._roundSize(realQRSize / count);
-    let drawImageSize = {
-      hideXDots: 0,
-      hideYDots: 0,
-      width: 0,
-      height: 0
-    };
-
     this._qr = qr;
 
+    const fixedSVGWidth = this._options.width;
+    const fixedSVGHeight = this._options.height;
+    const userInputMargin = this._options.margin || 0;
+
+    this._element.setAttribute("width", String(fixedSVGWidth));
+    this._element.setAttribute("height", String(fixedSVGHeight));
+
+    const availableWidthForDots = fixedSVGWidth - userInputMargin * 2;
+    const availableHeightForDots = fixedSVGHeight - userInputMargin * 2;
+    let baseSizeForQrContent = Math.min(availableWidthForDots, availableHeightForDots);
+
+    if (this._options.shape === shapeTypes.circle) {
+      baseSizeForQrContent /= Math.sqrt(2);
+    }
+
+    const dotSize = this._roundSize(baseSizeForQrContent / count);
+    const actualQrGridSize = dotSize * count;
+
+    const viewBoxWidth = actualQrGridSize + userInputMargin * 2;
+    const viewBoxHeight = actualQrGridSize + userInputMargin * 2;
+
+    this._element.setAttribute("viewBox", `0 0 ${viewBoxWidth} ${viewBoxHeight}`);
+
+    if (!this._options.dotsOptions.roundSize) {
+         this._element.setAttribute("shape-rendering", "crispEdges");
+    } else {
+         this._element.removeAttribute("shape-rendering");
+    }
+
+    const originalOptionsForDrawing = {
+        width: this._options.width,
+        height: this._options.height,
+        margin: this._options.margin
+    };
+    this._options.width = viewBoxWidth;
+    this._options.height = viewBoxHeight;
+    this._options.margin = userInputMargin;
+
+    let drawImageSize = { hideXDots: 0, hideYDots: 0, width: 0, height: 0 };
     if (this._options.image) {
-      //We need it to get image size
       await this.loadImage();
-      if (!this._image) return;
+      if (!this._image) {
+        this._options.width = originalOptionsForDrawing.width;
+        this._options.height = originalOptionsForDrawing.height;
+        this._options.margin = originalOptionsForDrawing.margin;
+        console.error("Failed to load image for QR code.");
+        return;
+      }
       const { imageOptions, qrOptions } = this._options;
       const coverLevel = imageOptions.imageSize * errorCorrectionPercents[qrOptions.errorCorrectionLevel];
       const maxHiddenDots = Math.floor(coverLevel * count * count);
@@ -108,34 +137,42 @@ export default class QRSVG {
     }
 
     this.drawBackground();
-    this.drawDots((row: number, col: number): boolean => {
-      if (this._options.imageOptions.hideBackgroundDots) {
-        if (
-          row >= (count - drawImageSize.hideYDots) / 2 &&
-          row < (count + drawImageSize.hideYDots) / 2 &&
-          col >= (count - drawImageSize.hideXDots) / 2 &&
-          col < (count + drawImageSize.hideXDots) / 2
-        ) {
-          return false;
-        }
-      }
 
+    this.drawDots((row: number, col: number): boolean => {
+      if (this._options.imageOptions.hideBackgroundDots && this._options.image) {
+        if (
+            row >= (count - drawImageSize.hideYDots) / 2 &&
+            row < (count + drawImageSize.hideYDots) / 2 &&
+            col >= (count - drawImageSize.hideXDots) / 2 &&
+            col < (count + drawImageSize.hideXDots) / 2
+          ) {
+            return false;
+          }
+      }
       if (squareMask[row]?.[col] || squareMask[row - count + 7]?.[col] || squareMask[row]?.[col - count + 7]) {
         return false;
       }
-
       if (dotMask[row]?.[col] || dotMask[row - count + 7]?.[col] || dotMask[row]?.[col - count + 7]) {
         return false;
       }
-
       return true;
     });
+
     this.drawCorners();
 
-    if (this._options.image) {
-      await this.drawImage({ width: drawImageSize.width, height: drawImageSize.height, count, dotSize });
+    if (this._options.image && this._image) {
+      await this.drawImage({
+          width: drawImageSize.width,
+          height: drawImageSize.height,
+          count,
+          dotSize
+      });
     }
-  }
+
+    this._options.width = originalOptionsForDrawing.width;
+    this._options.height = originalOptionsForDrawing.height;
+    this._options.margin = originalOptionsForDrawing.margin;
+}
 
   drawBackground(): void {
     const element = this._element;
